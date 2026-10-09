@@ -17,6 +17,7 @@ import {
   Home,
   TrendingUp,
   Building2,
+  Hash,
 } from 'lucide-react';
 import {
   STANDARD_PORTS,
@@ -24,6 +25,8 @@ import {
   ELEVATOR_PROFILES,
   ElevatorProfileId,
   getFieldsForProfile,
+  generateEgisId,
+  EGIS_FORMAT_PATTERNS,
 } from '@sems/shared';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useProjectStore } from '@/stores/project-store';
@@ -90,7 +93,7 @@ const INITIAL_TEMPLATES: TemplateConfigItem[] = [
 ];
 
 export const SettingsPage: React.FC = () => {
-  const { resetToDefaults } = useProjectStore();
+  const { resetToDefaults, egisFormatPattern, setEgisFormatPattern, egisList, updateEgisId } = useProjectStore();
   const [templates, setTemplates] = useState<TemplateConfigItem[]>(INITIAL_TEMPLATES);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingProfileId, setUploadingProfileId] = useState<ElevatorProfileId | null>(null);
@@ -257,6 +260,114 @@ export const SettingsPage: React.FC = () => {
               </div>
               <span className="font-mono font-bold">{BUSINESS_RULES.DEFAULT_WARRANTY_MONTHS} Months</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* EGIS ID NUMBERING FORMAT CONFIGURATION */}
+      <div className="p-6 rounded-2xl border border-border bg-card shadow-sm space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+              <Hash className="w-4 h-4 text-purple-600" />
+              <span>EGIS ID Numbering Format (Format Penomoran EGIS)</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Tentukan format penamaan kode identifikasi EGIS untuk proyek dan urutan sequence revisinya.
+            </p>
+          </div>
+          <span className="font-mono text-xs px-2.5 py-1 rounded bg-purple-500/10 text-purple-600 font-bold border border-purple-500/20">
+            Preview: {generateEgisId({ year: 2026, month: 10, runningNumber: 125, seqNumber: 2, pattern: egisFormatPattern })}
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          <label className="text-xs font-semibold text-foreground block">
+            Pilih Pola Format Standar:
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              {
+                id: EGIS_FORMAT_PATTERNS.STANDARD_SEMS,
+                title: 'ID{YYYY} {MM} {NUM} - SEQ{SEQ}',
+                sample: 'ID2026 10 0125 - SEQ2',
+                badge: 'Format Standar Baru (Aktif)',
+                desc: 'Prefix Negara/ID + Tahun 4 digit + Bulan 2 digit + No Urut 4 digit + Suffix Sequence revisi',
+              },
+              {
+                id: EGIS_FORMAT_PATTERNS.STANDARD_BASE,
+                title: 'ID{YYYY} {MM} {NUM}',
+                sample: 'ID2026 10 0125',
+                badge: 'Base Package Format',
+                desc: 'ID dasar tanpa penulisan - SEQ di dalam nama ID utama (SEQ dicatat di kolom revisi)',
+              },
+              {
+                id: EGIS_FORMAT_PATTERNS.COMPACT_DASH,
+                title: 'ID-{YYYY}{MM}-{NUM}-S{SEQ}',
+                sample: 'ID-202610-0125-S2',
+                badge: 'Compact Format',
+                desc: 'Pemisah strip (-) tanpa spasi untuk kompatibilitas sistem integrasi ERP/SAP',
+              },
+              {
+                id: EGIS_FORMAT_PATTERNS.HYUNDAI_LEGACY,
+                title: 'HDE-{YY}{NUM}',
+                sample: 'HDE-26000125',
+                badge: 'Legacy Hyundai Factory',
+                desc: 'Format lama penomoran pabrik Hyundai (HDE- + 2 digit tahun + 6 digit running)',
+              },
+            ].map((fmt) => (
+              <div
+                key={fmt.id}
+                onClick={() => {
+                  setEgisFormatPattern(fmt.id);
+                  toast.success(`Format EGIS ID diubah ke: ${fmt.sample}`);
+                }}
+                className={`p-4 rounded-xl border text-xs cursor-pointer transition-all ${
+                  egisFormatPattern === fmt.id
+                    ? 'border-purple-500 bg-purple-500/5 ring-1 ring-purple-500 shadow-sm'
+                    : 'border-border bg-card hover:border-border/80 hover:bg-muted/30'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-mono font-bold text-sm text-foreground">{fmt.sample}</span>
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                    egisFormatPattern === fmt.id
+                      ? 'bg-purple-600 text-white font-bold'
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {fmt.badge}
+                  </span>
+                </div>
+                <div className="font-mono text-[11px] text-muted-foreground mb-1">{fmt.title}</div>
+                <p className="text-[11px] text-muted-foreground">{fmt.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs border-t border-border">
+            <div className="text-muted-foreground text-[11px]">
+              Token: <code className="text-foreground font-mono">{'{PREFIX}'}</code>, <code className="text-foreground font-mono">{'{YYYY}'}</code>, <code className="text-foreground font-mono">{'{MM}'}</code>, <code className="text-foreground font-mono">{'{NUM}'}</code>, <code className="text-foreground font-mono">{'{SEQ}'}</code>
+            </div>
+            <button
+              onClick={() => {
+                egisList.forEach((e, idx) => {
+                  const num = String(125 + idx).padStart(4, '0');
+                  const seq = e.currentSeqNumber || 2;
+                  const newId = generateEgisId({
+                    year: 2026,
+                    month: 10,
+                    runningNumber: num,
+                    seqNumber: seq,
+                    pattern: egisFormatPattern,
+                  });
+                  updateEgisId(e.egisId, newId);
+                });
+                toast.success('Semua EGIS ID yang aktif berhasil diperbarui ke format baru!');
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold transition-all shadow-sm"
+            >
+              🔄 Terapkan Format ke Seluruh EGIS Aktif
+            </button>
           </div>
         </div>
       </div>

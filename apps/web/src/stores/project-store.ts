@@ -12,6 +12,9 @@ import {
   ProductType,
   calculateEgisValidity,
   calculatePriceValidity,
+  generateEgisId,
+  bumpEgisSequence,
+  EGIS_FORMAT_PATTERNS,
 } from '@sems/shared';
 import {
   MOCK_PROJECTS,
@@ -98,6 +101,11 @@ interface ProjectState {
   addDocument: (doc: Omit<DocumentItem, 'id' | 'date'>) => DocumentItem;
   deleteDocument: (id: string) => void;
 
+  // EGIS ID Pattern & Renaming
+  egisFormatPattern: string;
+  setEgisFormatPattern: (pattern: string) => void;
+  updateEgisId: (oldEgisId: string, newEgisId: string) => void;
+
   // Reset
   resetToDefaults: () => void;
 }
@@ -111,6 +119,9 @@ export const useProjectStore = create<ProjectState>()(
       documents: INITIAL_DOCS,
       activities: MOCK_ACTIVITY_LOGS,
       isLoading: false,
+      egisFormatPattern: EGIS_FORMAT_PATTERNS.STANDARD_SEMS,
+
+      setEgisFormatPattern: (pattern) => set({ egisFormatPattern: pattern }),
 
       createProject: (payload) => {
         const id = `prj-${Date.now()}`;
@@ -121,7 +132,13 @@ export const useProjectStore = create<ProjectState>()(
         futureDate.setDate(futureDate.getDate() + 180);
         const expiryIso = futureDate.toISOString();
 
-        const egisCode = `HDE-260${Math.floor(1000 + Math.random() * 9000)}`;
+        const egisCode = generateEgisId({
+          year: 2026,
+          month: 10,
+          runningNumber: Math.floor(100 + Math.random() * 900),
+          seqNumber: 1,
+          pattern: get().egisFormatPattern,
+        });
 
         const aliasList = [
           { id: `al-${Date.now()}-1`, name: `${payload.name} (Primary)`, isPrimary: true, addedAt: now },
@@ -294,14 +311,16 @@ export const useProjectStore = create<ProjectState>()(
 
           // Optional new sequence for audit trail
           let newRevisions = state.revisions;
+          let activeEgisId = egisId;
           if (createNewSeq) {
             const currentEgis = state.egisList.find((e) => e.egisId === egisId);
             const currentSeq = currentEgis?.currentSeqNumber || 1;
             const nextSeq = currentSeq + 1;
+            activeEgisId = bumpEgisSequence(egisId, nextSeq);
             const newRev: Revision = {
               id: `rev-${Date.now()}`,
               egisRefId: currentEgis?.id || `egis-${Date.now()}`,
-              egisId,
+              egisId: activeEgisId,
               seqNumber: nextSeq,
               seqCode: String(nextSeq).padStart(3, '0'),
               process: 'FUP' as any,
@@ -314,7 +333,7 @@ export const useProjectStore = create<ProjectState>()(
               createdBy: 'usr-1',
               createdByName: 'Current Estimator',
               changeCount: 1,
-              sourceFileName: `${egisId}_00${nextSeq}_ModelChange.xlsx`,
+              sourceFileName: `${activeEgisId.replace(/\s+/g, '_')}_ModelChange.xlsx`,
               notes: `Model changed to ${modelName}. Submitted for Lead Estimator verification.`,
               createdAt: now,
               updatedAt: now,
@@ -322,19 +341,30 @@ export const useProjectStore = create<ProjectState>()(
             newRevisions = [newRev, ...state.revisions];
           }
 
+          // If ID changed due to sequence bump (e.g. - SEQ1 -> - SEQ2)
+          const finalEgisList = updatedEgisList.map((e) =>
+            e.egisId === egisId ? { ...e, egisId: activeEgisId, currentSeqNumber: (e.currentSeqNumber || 1) + (createNewSeq ? 1 : 0) } : e
+          );
+          const finalProjects = updatedProjects.map((p) => ({
+            ...p,
+            egisSummaries: (p.egisSummaries || []).map((eg) =>
+              eg.egisId === egisId ? { ...eg, egisId: activeEgisId } : eg
+            ),
+          }));
+
           const newActivity: ActivityLogItem = {
             id: `act-${Date.now()}`,
             user: 'Estimator',
             role: 'Estimator',
             action: `Changed Model for ${egisId}`,
-            target: `New Model: ${modelName}`,
+            target: `New Model: ${modelName} (${activeEgisId})`,
             time: 'Just now',
             badge: 'purple',
           };
 
           return {
-            egisList: updatedEgisList,
-            projects: updatedProjects,
+            egisList: finalEgisList,
+            projects: finalProjects,
             revisions: newRevisions,
             activities: [newActivity, ...state.activities],
           };
@@ -342,12 +372,20 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       addEgisAlternative: (projectId, payload) => {
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
-        const egisId = `HDE-2600${randomNum}`;
-        const now = new Date().toISOString();
+        const now = new Date();
+        const nowIso = now.toISOString();
         const futureDate = new Date();
         futureDate.setDate(futureDate.getDate() + 180);
         const expiryIso = futureDate.toISOString();
+
+        const randomNum = Math.floor(100 + Math.random() * 900);
+        const egisId = generateEgisId({
+          year: now.getFullYear(),
+          month: now.getMonth() + 1,
+          runningNumber: randomNum,
+          seqNumber: 1,
+          pattern: get().egisFormatPattern,
+        });
 
         const targetProject = get().projects.find((p) => p.id === projectId);
         const projectName = targetProject?.name || 'Project';
@@ -363,7 +401,7 @@ export const useProjectStore = create<ProjectState>()(
           production: payload.production,
           port: 'Shanghai Port',
           warrantyMonths: 12,
-          issueDate: now,
+          issueDate: nowIso,
           expiryDate: expiryIso,
           currentSeqNumber: 1,
           latestPrice: payload.price,
@@ -371,8 +409,8 @@ export const useProjectStore = create<ProjectState>()(
           egisValidity: calculateEgisValidity(expiryIso),
           priceValidity: calculatePriceValidity(expiryIso),
           notes: `Created alternative model ${payload.model}`,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: nowIso,
+          updatedAt: nowIso,
         };
 
         const initialSummary = {
@@ -399,15 +437,15 @@ export const useProjectStore = create<ProjectState>()(
           status: RevisionStatus.PENDING_REVIEW,
           price: payload.price,
           currency: payload.currency,
-          priceDate: now,
+          priceDate: nowIso,
           priceExpiryDate: expiryIso,
           createdBy: 'usr-1',
           createdByName: 'Current Estimator',
           changeCount: 1,
           sourceFileName: `${egisId}_001_Initial.xlsx`,
           notes: `Initial sequence for alternative model ${payload.model}`,
-          createdAt: now,
-          updatedAt: now,
+          createdAt: nowIso,
+          updatedAt: nowIso,
         };
 
         set((state) => ({
@@ -418,7 +456,7 @@ export const useProjectStore = create<ProjectState>()(
               ? {
                   ...p,
                   egisSummaries: [...(p.egisSummaries || []), initialSummary],
-                  updatedAt: now,
+                  updatedAt: nowIso,
                 }
               : p
           ),
@@ -437,6 +475,38 @@ export const useProjectStore = create<ProjectState>()(
         }));
 
         return newEgis;
+      },
+
+      updateEgisId: (oldEgisId, newEgisId) => {
+        const trimmedNew = newEgisId.trim();
+        if (!trimmedNew || oldEgisId === trimmedNew) return;
+        const now = new Date().toISOString();
+        set((state) => ({
+          egisList: state.egisList.map((e) =>
+            e.egisId === oldEgisId ? { ...e, egisId: trimmedNew, updatedAt: now } : e
+          ),
+          projects: state.projects.map((p) => ({
+            ...p,
+            egisSummaries: (p.egisSummaries || []).map((eg) =>
+              eg.egisId === oldEgisId ? { ...eg, egisId: trimmedNew } : eg
+            ),
+          })),
+          revisions: state.revisions.map((r) =>
+            r.egisId === oldEgisId ? { ...r, egisId: trimmedNew, updatedAt: now } : r
+          ),
+          activities: [
+            {
+              id: `act-${Date.now()}`,
+              user: 'Estimator',
+              role: 'Estimator',
+              action: `Updated EGIS ID Format`,
+              target: `${oldEgisId} ➔ ${trimmedNew}`,
+              time: 'Just now',
+              badge: 'purple',
+            },
+            ...state.activities,
+          ],
+        }));
       },
 
       createRevision: (rev) => {

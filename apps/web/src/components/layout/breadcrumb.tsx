@@ -34,8 +34,8 @@ export const Breadcrumb: React.FC = () => {
         if (path.startsWith('prj-') || path.startsWith('PRJ-')) {
           return 'Project Details';
         }
-        if (path.startsWith('HDE-') || path.startsWith('egis-')) {
-          return path;
+        if (path.startsWith('HDE-') || path.startsWith('ID') || path.startsWith('egis-')) {
+          return decodeURIComponent(path);
         }
         return path.charAt(0).toUpperCase() + path.slice(1);
     }

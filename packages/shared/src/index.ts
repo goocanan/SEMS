@@ -18,6 +18,7 @@ export * from './utils/currency';
 export * from './utils/date';
 export * from './utils/validity';
 export * from './utils/normalization';
+export * from './utils/egis-numbering';
 
 // Schemas
 export * from './schemas/project.schema';

@@ -41,17 +41,24 @@ export const EgisDetailPage: React.FC = () => {
     addDocument,
     createRevision,
     updateEgisModel,
+    updateEgisId,
+    egisFormatPattern,
   } = useProjectStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [showEditIdModal, setShowEditIdModal] = useState(false);
+  const [newIdInput, setNewIdInput] = useState('');
+
+  const decodedId = useMemo(() => decodeURIComponent(id || ''), [id]);
+
   const egis = useMemo(() => {
-    const direct = egisList.find((e) => e.egisId === id);
+    const direct = egisList.find((e) => e.egisId === id || e.egisId === decodedId);
     if (direct) return direct;
 
     // Check project egis summaries
     for (const p of projects) {
-      const match = p.egisSummaries?.find((e) => e.egisId === id);
+      const match = p.egisSummaries?.find((e) => e.egisId === id || e.egisId === decodedId);
       if (match) {
         return {
           id: match.id,
@@ -119,13 +126,24 @@ export const EgisDetailPage: React.FC = () => {
       <div className="p-6 rounded-2xl border border-border bg-card shadow-sm space-y-5">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <span className="font-mono text-2xl font-extrabold text-foreground tracking-tight">
                 {egis.egisId}
               </span>
               <span className="font-mono text-xs font-bold px-2.5 py-0.5 rounded bg-primary/10 text-primary">
                 SEQ 00{egis.currentSeqNumber}
               </span>
+              <button
+                onClick={() => {
+                  setNewIdInput(egis.egisId);
+                  setShowEditIdModal(true);
+                }}
+                className="text-[11px] font-semibold text-primary hover:underline inline-flex items-center gap-1 px-2 py-0.5 rounded border border-primary/20 hover:bg-primary/5 transition-colors"
+                title="Ganti Format EGIS ID (e.g. ID2026 10 0125 - SEQ2)"
+              >
+                <Edit3 className="w-3 h-3" />
+                <span>Ganti Format ID</span>
+              </button>
             </div>
             <div className="text-sm font-semibold text-foreground flex items-center gap-2">
               <span>{egis.aliasName}</span>
@@ -429,6 +447,131 @@ export const EgisDetailPage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Edit EGIS ID Format Modal */}
+      {showEditIdModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Ganti Format EGIS ID</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Sesuaikan kode penomoran EGIS ID untuk paket tender ini
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEditIdModal(false)}
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = newIdInput.trim();
+                if (!trimmed) {
+                  toast.error('EGIS ID tidak boleh kosong');
+                  return;
+                }
+                if (trimmed === egis.egisId) {
+                  setShowEditIdModal(false);
+                  return;
+                }
+                updateEgisId(egis.egisId, trimmed);
+                toast.success(`Format EGIS ID berhasil diubah ke: "${trimmed}"`);
+                setShowEditIdModal(false);
+                navigate(`/egis/${encodeURIComponent(trimmed)}`, { replace: true });
+              }}
+              className="space-y-4 text-xs"
+            >
+              <div>
+                <label className="font-semibold block mb-1 text-foreground">
+                  Nomor EGIS ID Baru:
+                </label>
+                <input
+                  type="text"
+                  value={newIdInput}
+                  onChange={(e) => setNewIdInput(e.target.value)}
+                  placeholder="Contoh: ID2026 10 0125 - SEQ2"
+                  className="w-full p-2.5 rounded-xl border border-border bg-background font-mono font-bold text-sm focus:ring-1 focus:ring-primary"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1.5 text-foreground">
+                  Pilihan Format Cepat (Presets):
+                </label>
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewIdInput(`ID2026 10 0125 - SEQ${egis.currentSeqNumber || 2}`)}
+                    className="w-full text-left p-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/50 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="font-mono font-bold block text-foreground">ID2026 10 0125 - SEQ{egis.currentSeqNumber || 2}</span>
+                      <span className="text-[10px] text-muted-foreground">Format Standar SEMS (Tahun + Bulan + No Urut + SEQ)</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">Gunakan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewIdInput('ID2026 10 0125')}
+                    className="w-full text-left p-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/50 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="font-mono font-bold block text-foreground">ID2026 10 0125</span>
+                      <span className="text-[10px] text-muted-foreground">Format Base Package (Tanpa Suffix SEQ)</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">Gunakan</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewIdInput('HDE-26000125')}
+                    className="w-full text-left p-2.5 rounded-lg border border-border bg-muted/30 hover:bg-muted hover:border-primary/50 transition-colors flex items-center justify-between"
+                  >
+                    <div>
+                      <span className="font-mono font-bold block text-foreground">HDE-26000125</span>
+                      <span className="text-[10px] text-muted-foreground">Format Pabrik Hyundai Legacy</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">Gunakan</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-muted/40 border border-border text-[11px] text-muted-foreground leading-relaxed">
+                ℹ️ Mengubah format EGIS ID ini akan memperbarui kartu portfolio di Project Detail dan seluruh riwayat revisi terkait tanpa menghapus parameter teknis atau harga.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowEditIdModal(false)}
+                  className="px-4 py-2 rounded-xl border border-border hover:bg-muted font-semibold text-xs text-muted-foreground"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm transition-all"
+                >
+                  Simpan Format ID
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
