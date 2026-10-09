@@ -1,14 +1,81 @@
 import React, { useState } from 'react';
-import { Cpu, Download, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
-import { MOCK_PROJECTS } from '@/mocks/sems-data';
+import { Download, FileSpreadsheet, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { useProjectStore } from '@/stores/project-store';
 import { toast } from 'sonner';
 
 export const EgisGeneratorPage: React.FC = () => {
-  const [selectedProjectId, setSelectedProjectId] = useState(MOCK_PROJECTS[0].id);
-  const selectedProject = MOCK_PROJECTS.find((p) => p.id === selectedProjectId) || MOCK_PROJECTS[0];
+  const { projects, addDocument } = useProjectStore();
+  const [selectedProjectId, setSelectedProjectId] = useState(projects[0]?.id || '');
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+
+  const egisOptions = selectedProject?.egisSummaries || [];
+  const [selectedEgisId, setSelectedEgisId] = useState(egisOptions[0]?.egisId || 'HDE-26000125');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handleGenerate = () => {
-    toast.success(`EGIS SPEC Excel generated successfully for ${selectedProject.name}!`);
+    setIsGenerating(true);
+
+    setTimeout(() => {
+      const activeEgis = egisOptions.find((e) => e.egisId === selectedEgisId) || egisOptions[0];
+      const filename = `${selectedProject.name.replace(/\s+/g, '_')}_${selectedEgisId}_SPEC.csv`;
+
+      // Build structured CSV content
+      const csvRows = [
+        ['HYUNDAI ELEVATOR EGIS SPECIFICATION WORKBOOK'],
+        ['Generated At', new Date().toLocaleString()],
+        ['Project Code', selectedProject.projectCode],
+        ['Project Name', selectedProject.name],
+        ['Customer', selectedProject.customerName],
+        ['Building Type', selectedProject.buildingType],
+        ['Product Type', selectedProject.productType],
+        ['Unit Quantity', String(selectedProject.unitQuantity)],
+        ['EGIS ID', selectedEgisId],
+        ['Currency', activeEgis?.currency || 'USD'],
+        ['Production Factory', activeEgis?.production || 'STEP_SHANGHAI'],
+        ['Sequence Code', `00${activeEgis?.latestSeqNumber || 1}`],
+        ['Latest Price', String(activeEgis?.latestPrice || 125000)],
+        [],
+        ['CATEGORY', 'FIELD KEY', 'FIELD LABEL', 'SPEC VALUE', 'UNIT'],
+        ['GENERAL', 'model', 'Model Type', 'LUXEN-MR', '-'],
+        ['GENERAL', 'capacity', 'Rated Capacity', '1350', 'kg'],
+        ['GENERAL', 'speed', 'Rated Speed', '2.0', 'm/s'],
+        ['GENERAL', 'stops', 'Number of Stops / Openings', '22 / 22', 'Floors'],
+        ['DOOR', 'door_type', 'Door Operator', '2-Panel Center Opening (2P-CO)', '-'],
+        ['DOOR', 'door_width', 'Clear Entrance Width', '1100', 'mm'],
+        ['DOOR', 'door_height', 'Clear Entrance Height', '2100', 'mm'],
+        ['CONTROL', 'controller', 'Control System', 'STVF7 32-bit Microprocessor', '-'],
+        ['CONTROL', 'drive', 'Drive Machine', 'Gearless Permanent Magnet PMSM', '-'],
+        ['CAR', 'car_internal_w', 'Car Inside Width', '1600', 'mm'],
+        ['CAR', 'car_internal_d', 'Car Inside Depth', '1500', 'mm'],
+        ['CAR', 'car_internal_h', 'Car Inside Height', '2400', 'mm'],
+        ['SAFETY', 'safety_gear', 'Safety Gear Type', 'Progressive Safety Clamp', '-'],
+        ['SAFETY', 'buffer', 'Buffer Type', 'Oil Buffer (EN81-20 Compliant)', '-'],
+      ];
+
+      const csvContent = csvRows.map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      // Trigger file download
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Save to document library
+      addDocument({
+        name: filename,
+        type: 'Excel',
+        size: '18.4 KB',
+        project: selectedProject.name,
+      });
+
+      setIsGenerating(false);
+      toast.success(`EGIS SPEC Excel/CSV successfully generated and added to Document Library!`);
+    }, 600);
   };
 
   return (
@@ -28,10 +95,16 @@ export const EgisGeneratorPage: React.FC = () => {
             <label className="font-semibold block mb-1.5 text-foreground">Select Project</label>
             <select
               value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
+              onChange={(e) => {
+                setSelectedProjectId(e.target.value);
+                const prj = projects.find((p) => p.id === e.target.value);
+                if (prj?.egisSummaries?.[0]) {
+                  setSelectedEgisId(prj.egisSummaries[0].egisId);
+                }
+              }}
               className="w-full p-2.5 rounded-lg border border-border bg-background"
             >
-              {MOCK_PROJECTS.map((p) => (
+              {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.projectCode})
                 </option>
@@ -41,8 +114,12 @@ export const EgisGeneratorPage: React.FC = () => {
 
           <div>
             <label className="font-semibold block mb-1.5 text-foreground">Select EGIS Alternative</label>
-            <select className="w-full p-2.5 rounded-lg border border-border bg-background font-mono">
-              {selectedProject.egisSummaries?.map((eg) => (
+            <select
+              value={selectedEgisId}
+              onChange={(e) => setSelectedEgisId(e.target.value)}
+              className="w-full p-2.5 rounded-lg border border-border bg-background font-mono"
+            >
+              {egisOptions.map((eg) => (
                 <option key={eg.id} value={eg.egisId}>
                   {eg.egisId} — {eg.production}/{eg.currency} (SEQ 00{eg.latestSeqNumber})
                 </option>
@@ -94,10 +171,11 @@ export const EgisGeneratorPage: React.FC = () => {
         <div className="pt-2 flex items-center gap-3">
           <button
             onClick={handleGenerate}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 transition-all"
+            disabled={isGenerating}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/25 transition-all disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            <span>Generate & Download EGIS SPEC Excel</span>
+            <span>{isGenerating ? 'Generating Workbook...' : 'Generate & Download EGIS SPEC Excel'}</span>
           </button>
         </div>
       </div>

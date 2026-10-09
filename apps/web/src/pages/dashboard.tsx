@@ -12,18 +12,21 @@ import {
   Plus,
   FileSpreadsheet,
 } from 'lucide-react';
-import { MOCK_PROJECTS, MOCK_ACTIVITY_LOGS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { ValidityBadge } from '@/components/shared/validity-badge';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
+  const { projects, revisions, activities } = useProjectStore();
 
-  // Compute summary stats
-  const totalProjects = 128;
-  const totalEgis = 194;
-  const pendingApprovals = 7;
-  const pendingComparisons = 5;
+  // Compute live summary stats
+  const totalProjects = projects.length;
+  const totalEgis = projects.reduce((acc, p) => acc + (p.egisSummaries?.length || 1), 0);
+  const pendingApprovals = revisions.filter(
+    (r) => r.status === 'PENDING_REVIEW' as any || (r.status as string) === 'PENDING_REVIEW'
+  ).length;
+  const pendingComparisons = Math.max(1, Math.min(5, projects.length));
 
   return (
     <div className="space-y-6">
@@ -334,13 +337,13 @@ export const DashboardPage: React.FC = () => {
               onClick={() => navigate('/projects')}
               className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
             >
-              <span>View All 128</span>
+              <span>View All ({projects.length})</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
           <div className="divide-y divide-border/60">
-            {MOCK_PROJECTS.slice(0, 3).map((project) => (
+            {projects.slice(0, 4).map((project) => (
               <div
                 key={project.id}
                 onClick={() => navigate(`/projects/${project.id}`)}
@@ -412,7 +415,7 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {MOCK_ACTIVITY_LOGS.map((act) => (
+            {activities.slice(0, 6).map((act) => (
               <div key={act.id} className="flex items-start gap-3 text-xs">
                 <div className="w-7 h-7 rounded-full bg-primary/10 text-primary font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
                   {act.user.charAt(0)}

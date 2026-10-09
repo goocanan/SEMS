@@ -1,9 +1,10 @@
 import React from 'react';
 import { Calculator, DollarSign, TrendingUp } from 'lucide-react';
-import { MOCK_PROJECTS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
 
 export const EstimationsPage: React.FC = () => {
+  const { projects } = useProjectStore();
   return (
     <div className="space-y-6">
       <div>
@@ -60,7 +61,7 @@ export const EstimationsPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {MOCK_PROJECTS.map((p) => {
+            {projects.map((p) => {
               const primaryEgis = p.egisSummaries?.[0];
               return (
                 <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">

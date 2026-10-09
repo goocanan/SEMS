@@ -3,10 +3,11 @@ import { Command } from 'cmdk';
 import { useNavigate } from 'react-router-dom';
 import { Search, FolderKanban, Layers, Plus, UploadCloud, GitCompare, Calculator } from 'lucide-react';
 import { useAppStore } from '@/stores/app-store';
-import { MOCK_PROJECTS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 
 export const CommandPalette: React.FC = () => {
   const { commandOpen, setCommandOpen } = useAppStore();
+  const { projects } = useProjectStore();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -79,7 +80,7 @@ export const CommandPalette: React.FC = () => {
 
             {/* Projects */}
             <Command.Group heading="Projects" className="px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-              {MOCK_PROJECTS.map((project) => (
+              {projects.map((project) => (
                 <Command.Item
                   key={project.id}
                   onSelect={() => handleSelect(`/projects/${project.id}`)}
@@ -97,7 +98,7 @@ export const CommandPalette: React.FC = () => {
 
             {/* EGIS IDs */}
             <Command.Group heading="EGIS Alternatives" className="px-2 py-1 text-[11px] font-semibold text-muted-foreground">
-              {MOCK_PROJECTS.flatMap((p) => p.egisSummaries || []).map((egis) => (
+              {projects.flatMap((p) => p.egisSummaries || []).map((egis) => (
                 <Command.Item
                   key={egis.id}
                   onSelect={() => handleSelect(`/egis/${egis.egisId}`)}

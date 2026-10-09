@@ -8,7 +8,7 @@ import {
   ExternalLink,
   ChevronRight,
 } from 'lucide-react';
-import { MOCK_PROJECTS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { ValidityBadge } from '@/components/shared/validity-badge';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -17,13 +17,14 @@ import { useAppStore } from '@/stores/app-store';
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const { projectViewMode, setProjectViewMode } = useAppStore();
+  const { projects } = useProjectStore();
 
   const [search, setSearch] = useState('');
   const [selectedProduct, setSelectedProduct] = useState('ALL');
   const [selectedLocation, setSelectedLocation] = useState('ALL');
 
   const filteredProjects = useMemo(() => {
-    return MOCK_PROJECTS.filter((p) => {
+    return projects.filter((p) => {
       const matchSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         p.projectCode.toLowerCase().includes(search.toLowerCase()) ||

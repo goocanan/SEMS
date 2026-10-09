@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  MOCK_PROJECTS,
   MOCK_EGIS_DETAILS,
-  MOCK_REVISIONS,
   MOCK_SPECIFICATION_SNAPSHOT,
   MOCK_COMPARISON_REPORT,
 } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { ValidityBadge } from '@/components/shared/validity-badge';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
@@ -26,6 +25,8 @@ import {
   Clock,
   ArrowRight,
   ExternalLink,
+  Check,
+  X,
 } from 'lucide-react';
 import { SPEC_CATEGORIES } from '@sems/shared';
 import { toast } from 'sonner';
@@ -33,9 +34,13 @@ import { toast } from 'sonner';
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { projects, revisions, addAlias, createRevision } = useProjectStore();
 
   // Find project or fallback to first
-  const project = MOCK_PROJECTS.find((p) => p.id === id) || MOCK_PROJECTS[0];
+  const project = projects.find((p) => p.id === id) || projects[0];
+
+  const [aliasInput, setAliasInput] = useState('');
+  const [showAliasForm, setShowAliasForm] = useState(false);
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -62,7 +67,7 @@ export const ProjectDetailPage: React.FC = () => {
     { id: 'egis', label: 'EGIS Alternatives', icon: Layers, count: project.egisSummaries?.length },
     { id: 'specifications', label: 'Specification', icon: FileSpreadsheet },
     { id: 'documents', label: 'Documents', icon: FileText, count: 6 },
-    { id: 'revisions', label: 'Revision History', icon: History, count: MOCK_REVISIONS.length },
+    { id: 'revisions', label: 'Revision History', icon: History, count: revisions.length },
     { id: 'comparison', label: 'Comparison', icon: GitCompare, count: 5 },
     { id: 'pricing', label: 'Pricing Trends', icon: DollarSign },
     { id: 'validity', label: 'Validity Tracker', icon: ShieldCheck },
@@ -187,12 +192,56 @@ export const ProjectDetailPage: React.FC = () => {
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-bold text-foreground">Project Aliases ({project.aliases.length})</h2>
                 <button
-                  onClick={() => toast.info('Add alias')}
+                  onClick={() => setShowAliasForm(!showAliasForm)}
                   className="text-xs text-primary font-semibold hover:underline"
                 >
-                  + Add Alias
+                  {showAliasForm ? 'Cancel' : '+ Add Alias'}
                 </button>
               </div>
+
+              {showAliasForm && (
+                <div className="flex items-center gap-2 pt-1 pb-2">
+                  <input
+                    type="text"
+                    value={aliasInput}
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && aliasInput.trim()) {
+                        addAlias(project.id, aliasInput.trim());
+                        toast.success(`Alias "${aliasInput.trim()}" added to project!`);
+                        setAliasInput('');
+                        setShowAliasForm(false);
+                      }
+                    }}
+                    placeholder="Enter project alias name..."
+                    className="flex-1 text-xs px-2.5 py-1.5 rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => {
+                      if (aliasInput.trim()) {
+                        addAlias(project.id, aliasInput.trim());
+                        toast.success(`Alias "${aliasInput.trim()}" added to project!`);
+                        setAliasInput('');
+                        setShowAliasForm(false);
+                      }
+                    }}
+                    className="p-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAliasInput('');
+                      setShowAliasForm(false);
+                    }}
+                    className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 All tender nicknames resolve directly to this project when importing specs.
               </p>
@@ -447,17 +496,49 @@ export const ProjectDetailPage: React.FC = () => {
       )}
 
       {/* 5. Revision History Tab */}
-      {activeTab === 'revisions' && (
-        <div className="p-6 rounded-xl border border-border bg-card shadow-sm space-y-6">
-          <div>
-            <h2 className="text-sm font-bold text-foreground">Sequence Timeline (SEQ 001 → SEQ 005)</h2>
-            <p className="text-xs text-muted-foreground">
-              Audit trail of all quotation, follow up plan, approval drawing, and spec check revisions.
-            </p>
-          </div>
+      {activeTab === 'revisions' && (() => {
+        const projectEgisIds = new Set(project.egisSummaries?.map((e) => e.egisId) || []);
+        const projectRevisions = revisions.filter((r) => projectEgisIds.has(r.egisId));
+        const displayRevisions = projectRevisions.length > 0 ? projectRevisions : revisions.slice(0, 5);
 
-          <div className="relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
-            {MOCK_REVISIONS.map((rev, index) => (
+        const handleAddSequence = () => {
+          const nextSeq = displayRevisions.length + 1;
+          const targetEgis = project.egisSummaries?.[0]?.egisId || 'HDE-26000125';
+          const targetRef = project.egisSummaries?.[0]?.id || 'egis-001';
+
+          createRevision({
+            egisRefId: targetRef,
+            egisId: targetEgis,
+            seqNumber: nextSeq,
+            revisionLabel: `FUP REV ${nextSeq} (Tender Modification)`,
+            price: 130000 + nextSeq * 2500,
+            currency: 'USD' as any,
+            notes: `Submitted Revision SEQ ${String(nextSeq).padStart(3, '0')} for ${project.name}`,
+            sourceFileName: `${targetEgis}_00${nextSeq}_Updated.xlsx`,
+          });
+          toast.success(`Created Revision SEQ 00${nextSeq} for ${targetEgis}! Sent to Approvals Queue.`);
+        };
+
+        return (
+          <div className="p-6 rounded-xl border border-border bg-card shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-foreground">Sequence Timeline</h2>
+                <p className="text-xs text-muted-foreground">
+                  Audit trail of all quotation, follow up plan, approval drawing, and spec check revisions.
+                </p>
+              </div>
+              <button
+                onClick={handleAddSequence}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-all self-start sm:self-auto"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Create New Sequence</span>
+              </button>
+            </div>
+
+            <div className="relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-border">
+              {displayRevisions.map((rev, index) => (
               <div key={rev.id} className="relative space-y-2">
                 {/* Timeline node dot */}
                 <div
@@ -513,7 +594,7 @@ export const ProjectDetailPage: React.FC = () => {
             ))}
           </div>
         </div>
-      )}
+      ); })()}
 
       {/* 6. Comparison Tab */}
       {activeTab === 'comparison' && (

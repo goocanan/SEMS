@@ -1,6 +1,6 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MOCK_EGIS_DETAILS, MOCK_REVISIONS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { ValidityBadge } from '@/components/shared/validity-badge';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -19,8 +19,44 @@ import { toast } from 'sonner';
 export const EgisDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { egisList, revisions, projects } = useProjectStore();
 
-  const egis = MOCK_EGIS_DETAILS.find((e) => e.egisId === id) || MOCK_EGIS_DETAILS[0];
+  const egis = React.useMemo(() => {
+    const direct = egisList.find((e) => e.egisId === id);
+    if (direct) return direct;
+
+    // Check project egis summaries
+    for (const p of projects) {
+      const match = p.egisSummaries?.find((e) => e.egisId === id);
+      if (match) {
+        return {
+          id: match.id,
+          egisId: match.egisId,
+          projectId: p.id,
+          projectName: p.name,
+          projectCode: p.projectCode,
+          aliasName: match.aliasName || `${p.name} Package`,
+          currency: match.currency as any,
+          production: match.production as any,
+          port: 'Shanghai Port',
+          warrantyMonths: 12,
+          issueDate: p.createdAt,
+          expiryDate: match.egisValidity.expiryDate,
+          currentSeqNumber: match.latestSeqNumber,
+          latestPrice: match.latestPrice,
+          egisValidity: match.egisValidity,
+          priceValidity: match.priceValidity,
+          status: 'ACTIVE' as any,
+          createdAt: p.createdAt,
+          updatedAt: p.updatedAt,
+        };
+      }
+    }
+    return egisList[0];
+  }, [id, egisList, projects]);
+
+  const egisRevisions = revisions.filter((r) => r.egisId === egis?.egisId);
+  const displayRevisions = egisRevisions.length > 0 ? egisRevisions : revisions.slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -131,7 +167,7 @@ export const EgisDetailPage: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          {MOCK_REVISIONS.map((rev) => (
+          {displayRevisions.map((rev) => (
             <div
               key={rev.id}
               className="p-4 rounded-xl border border-border bg-card hover:border-primary/40 transition-colors space-y-2"

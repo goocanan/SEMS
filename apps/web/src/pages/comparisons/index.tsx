@@ -2,9 +2,13 @@ import React, { useState } from 'react';
 import { MOCK_COMPARISON_REPORT } from '@/mocks/sems-data';
 import { DiffItem, DiffType } from '@sems/shared';
 import { GitCompare, CheckCircle2, XCircle, ArrowRight, FileSpreadsheet } from 'lucide-react';
+import { useProjectStore } from '@/stores/project-store';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 export const ComparisonsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { createRevision } = useProjectStore();
   const [diffs, setDiffs] = useState<DiffItem[]>(MOCK_COMPARISON_REPORT.diffs);
 
   const handleApprove = (id: string, name: string) => {
@@ -48,7 +52,20 @@ export const ComparisonsPage: React.FC = () => {
             Approve All Delta Changes ({diffs.length})
           </button>
           <button
-            onClick={() => toast.success('New Sequence SEQ 006 generated with approved values!')}
+            onClick={() => {
+              createRevision({
+                egisRefId: 'egis-001',
+                egisId: 'HDE-26000125',
+                seqNumber: 6,
+                revisionLabel: 'FUP REV 2 (Approved Delta Spec Check)',
+                price: 137500,
+                currency: 'USD' as any,
+                notes: `Generated from Diff Audit comparison with ${approvedCount} delta changes approved.`,
+                sourceFileName: 'HDE-26000125_006_FUP_DeltaApproved.xlsx',
+              });
+              toast.success('Generated Sequence SEQ 006 with approved delta values! Transferred to Approvals Queue.');
+              navigate('/approvals');
+            }}
             disabled={approvedCount === 0}
             className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm disabled:opacity-50 transition-all"
           >

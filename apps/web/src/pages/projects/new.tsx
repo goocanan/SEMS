@@ -16,11 +16,12 @@ import {
   Currency,
   calculateStringSimilarity,
 } from '@sems/shared';
-import { MOCK_PROJECTS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { toast } from 'sonner';
 
 export const CreateProjectPage: React.FC = () => {
   const navigate = useNavigate();
+  const { projects, createProject } = useProjectStore();
   const [currentStep, setCurrentStep] = useState(1);
 
   // Form State
@@ -49,7 +50,7 @@ export const CreateProjectPage: React.FC = () => {
     let bestMatch = null;
     let maxSim = 0;
 
-    for (const proj of MOCK_PROJECTS) {
+    for (const proj of projects) {
       // Check primary name
       const sim = calculateStringSimilarity(name, proj.name);
       if (sim > maxSim) {
@@ -71,7 +72,7 @@ export const CreateProjectPage: React.FC = () => {
       return bestMatch;
     }
     return null;
-  }, [name]);
+  }, [name, projects]);
 
   const handleAddAlias = () => {
     if (newAlias.trim()) {
@@ -81,8 +82,24 @@ export const CreateProjectPage: React.FC = () => {
   };
 
   const handleCreate = () => {
-    toast.success(`Project "${name}" and initial EGIS created successfully!`);
-    navigate('/projects/prj-001');
+    if (!name.trim()) {
+      toast.error('Please enter a project name.');
+      return;
+    }
+    const newProject = createProject({
+      name: name.trim(),
+      customerName: customer.trim() || 'PT General Customer',
+      location: location || 'Jakarta',
+      buildingType,
+      productType,
+      unitQuantity: Number(unitQuantity) || 1,
+      marketingName: marketing || 'Budi Santoso',
+      aliases,
+      production,
+      currency,
+    });
+    toast.success(`Project "${newProject.name}" (${newProject.projectCode}) created successfully!`);
+    navigate(`/projects/${newProject.id}`);
   };
 
   return (

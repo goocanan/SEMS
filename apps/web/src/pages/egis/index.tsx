@@ -1,15 +1,49 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Layers, ChevronRight, ExternalLink } from 'lucide-react';
-import { MOCK_EGIS_DETAILS } from '@/mocks/sems-data';
+import { useProjectStore } from '@/stores/project-store';
 import { ValidityBadge } from '@/components/shared/validity-badge';
 import { CurrencyDisplay } from '@/components/shared/currency-display';
 
 export const EgisListPage: React.FC = () => {
   const navigate = useNavigate();
+  const { egisList, projects } = useProjectStore();
   const [search, setSearch] = useState('');
 
-  const filtered = MOCK_EGIS_DETAILS.filter((e) =>
+  // Combine static master list with dynamic projects' EGIS alternatives
+  const allEgis = React.useMemo(() => {
+    const list = [...egisList];
+    for (const p of projects) {
+      for (const eg of p.egisSummaries || []) {
+        if (!list.some((existing) => existing.egisId === eg.egisId)) {
+          list.push({
+            id: eg.id,
+            egisId: eg.egisId,
+            projectId: p.id,
+            projectName: p.name,
+            projectCode: p.projectCode,
+            aliasName: eg.aliasName || `${p.name} Package`,
+            currency: eg.currency as any,
+            production: eg.production as any,
+            port: 'Shanghai Port',
+            warrantyMonths: 12,
+            issueDate: p.createdAt,
+            expiryDate: eg.egisValidity.expiryDate,
+            currentSeqNumber: eg.latestSeqNumber,
+            latestPrice: eg.latestPrice,
+            egisValidity: eg.egisValidity,
+            priceValidity: eg.priceValidity,
+            status: 'ACTIVE' as any,
+            createdAt: p.createdAt,
+            updatedAt: p.updatedAt,
+          });
+        }
+      }
+    }
+    return list;
+  }, [egisList, projects]);
+
+  const filtered = allEgis.filter((e) =>
     e.egisId.toLowerCase().includes(search.toLowerCase()) ||
     e.projectName.toLowerCase().includes(search.toLowerCase()) ||
     (e.aliasName && e.aliasName.toLowerCase().includes(search.toLowerCase()))
