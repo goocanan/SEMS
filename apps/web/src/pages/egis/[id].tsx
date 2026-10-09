@@ -14,12 +14,14 @@ import {
   Shield,
   FileSpreadsheet,
 } from 'lucide-react';
+import { parseExcelSpecification } from '@/lib/excel-parser';
 import { toast } from 'sonner';
 
 export const EgisDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { egisList, revisions, projects } = useProjectStore();
+  const { egisList, revisions, projects, addDocument, createRevision } = useProjectStore();
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const egis = React.useMemo(() => {
     const direct = egisList.find((e) => e.egisId === id);
@@ -95,14 +97,54 @@ export const EgisDetailPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Hidden File Input for Excel */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            className="hidden"
+            accept=".xlsx,.xls,.csv"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+
+              try {
+                const parsed = await parseExcelSpecification(file);
+                addDocument({
+                  name: file.name,
+                  type: 'Excel',
+                  size: parsed.fileSize,
+                  project: egis.projectName,
+                });
+
+                const nextSeq = (displayRevisions[0]?.seqNumber || egis.currentSeqNumber || 1) + 1;
+                createRevision({
+                  egisRefId: egis.id,
+                  egisId: egis.egisId,
+                  seqNumber: nextSeq,
+                  revisionLabel: `SPEC CHECK REV ${nextSeq}`,
+                  price: parsed.detectedPrice || egis.latestPrice,
+                  currency: egis.currency,
+                  sourceFileName: file.name,
+                  notes: `Uploaded via Excel Parser (${parsed.confidenceAvg}% confidence)`,
+                });
+
+                toast.success(`Successfully uploaded "${file.name}" and created SEQ 00${nextSeq}!`);
+              } catch (err: any) {
+                toast.error('Failed to parse Excel file: ' + (err?.message || 'Invalid format'));
+              } finally {
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }
+            }}
+          />
+
           {/* Quick Actions */}
           <div className="flex items-center gap-2">
             <button
-              onClick={() => toast.info('Excel upload modal opened for ' + egis.egisId)}
+              onClick={() => fileInputRef.current?.click()}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold shadow-sm transition-all"
             >
               <UploadCloud className="w-3.5 h-3.5" />
-              <span>Upload New SEQ</span>
+              <span>Upload New SEQ Excel</span>
             </button>
             <button
               onClick={() => navigate(`/projects/${egis.projectId}`)}
