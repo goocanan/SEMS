@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  MOCK_EGIS_DETAILS,
   MOCK_SPECIFICATION_SNAPSHOT,
   MOCK_COMPARISON_REPORT,
 } from '@/mocks/sems-data';
@@ -27,20 +26,71 @@ import {
   ExternalLink,
   Check,
   X,
+  Sparkles,
 } from 'lucide-react';
-import { SPEC_CATEGORIES } from '@sems/shared';
+import { SPEC_CATEGORIES, Currency, Production } from '@sems/shared';
 import { toast } from 'sonner';
+
+const AVAILABLE_MODELS = [
+  { id: 'LUXEN-MR', label: 'LUXEN-MR (Passenger Machine Room - Standard)' },
+  { id: 'NEW YZER', label: 'NEW YZER (Passenger MRL - Machine Roomless)' },
+  { id: 'LUXEN-BED', label: 'LUXEN-BED (Hospital & Stretcher Medical Lift)' },
+  { id: 'FREIGHT-MRL', label: 'FREIGHT-MRL (Heavy Duty Cargo & Goods Lift)' },
+  { id: 'LUXEN-PANORAMIC', label: 'LUXEN-PANORAMIC (Glass Observation Lift)' },
+  { id: 'NEW YZER-VILLA', label: 'NEW YZER-VILLA (Home & Compact Villa Lift)' },
+  { id: 'HYBRID-ESCALATOR', label: 'HYBRID-ESCALATOR (Commercial Escalator)' },
+];
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, revisions, addAlias, createRevision } = useProjectStore();
+  const { projects, revisions, egisList, addAlias, addEgisAlternative, createRevision } = useProjectStore();
 
   // Find project or fallback to first
   const project = projects.find((p) => p.id === id) || projects[0];
 
   const [aliasInput, setAliasInput] = useState('');
   const [showAliasForm, setShowAliasForm] = useState(false);
+
+  // New EGIS Alternative Modal State
+  const [showNewEgisModal, setShowNewEgisModal] = useState(false);
+  const [newModel, setNewModel] = useState('NEW YZER');
+  const [customModel, setCustomModel] = useState('');
+  const [newProduction, setNewProduction] = useState<Production>(Production.CHINA);
+  const [newCurrency, setNewCurrency] = useState<Currency>(Currency.USD);
+  const [newPrice, setNewPrice] = useState('145000');
+  const [newAliasName, setNewAliasName] = useState('');
+
+  // Reactive Project EGIS items
+  const projectEgisList = useMemo(() => {
+    const fromList = egisList.filter((e) => e.projectId === project?.id);
+    if (fromList.length > 0) return fromList;
+    return project?.egisSummaries || [];
+  }, [egisList, project]);
+
+  const handleCreateAlternative = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalModel = newModel === 'CUSTOM' ? customModel.trim() : newModel;
+    if (!finalModel) {
+      toast.error('Please specify a model');
+      return;
+    }
+    const priceNum = parseFloat(newPrice) || 0;
+    const finalAlias = newAliasName.trim() || `${finalModel} (${newProduction} ${newCurrency})`;
+
+    const created = addEgisAlternative(project.id, {
+      aliasName: finalAlias,
+      model: finalModel,
+      production: newProduction,
+      currency: newCurrency,
+      price: priceNum,
+    });
+
+    toast.success(`New EGIS Alternative ${created.egisId} created for "${finalModel}"!`);
+    setShowNewEgisModal(false);
+    setNewAliasName('');
+    setCustomModel('');
+  };
 
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -302,28 +352,37 @@ export const ProjectDetailPage: React.FC = () => {
               <div>
                 <h2 className="text-base font-bold text-foreground">EGIS Alternative Options</h2>
                 <p className="text-xs text-muted-foreground">
-                  1 Project can have multiple EGIS alternatives (e.g., China USD, China CNY, Korea USD)
+                  1 Project can have multiple EGIS alternatives (e.g., China USD, Korea MRL, High Speed)
                 </p>
               </div>
-              <button
-                onClick={() => setActiveTab('egis')}
-                className="text-xs text-primary font-semibold hover:underline"
-              >
-                View Detailed Table →
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowNewEgisModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Add Alternative</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('egis')}
+                  className="text-xs text-primary font-semibold hover:underline"
+                >
+                  View Table →
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {project.egisSummaries?.map((egis) => (
+              {projectEgisList.map((egis: any) => (
                 <div
-                  key={egis.id}
+                  key={egis.id || egis.egisId}
                   onClick={() => navigate(`/egis/${egis.egisId}`)}
                   className="p-4 rounded-xl border border-border bg-card hover:border-primary/50 hover:shadow-md transition-all cursor-pointer space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-sm text-foreground">{egis.egisId}</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
-                      SEQ 00{egis.latestSeqNumber}
+                      SEQ 00{egis.latestSeqNumber || egis.currentSeqNumber || 1}
                     </span>
                   </div>
 
@@ -360,17 +419,17 @@ export const ProjectDetailPage: React.FC = () => {
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="p-4 border-b border-border flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-bold text-foreground">Project EGIS Portfolio</h2>
+                <h2 className="text-sm font-bold text-foreground">Project EGIS Portfolio ({projectEgisList.length})</h2>
                 <p className="text-xs text-muted-foreground">
-                  Manage commercial configurations and factory origins
+                  Manage commercial configurations, alternative models, and factory origins
                 </p>
               </div>
               <button
-                onClick={() => toast.info('New EGIS modal')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold"
+                onClick={() => setShowNewEgisModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>New EGIS</span>
+                <span>+ New EGIS Alternative</span>
               </button>
             </div>
 
@@ -390,9 +449,9 @@ export const ProjectDetailPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {MOCK_EGIS_DETAILS.map((egis) => (
+                  {projectEgisList.map((egis: any) => (
                     <tr
-                      key={egis.id}
+                      key={egis.id || egis.egisId}
                       onClick={() => navigate(`/egis/${egis.egisId}`)}
                       className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 cursor-pointer"
                     >
@@ -400,7 +459,7 @@ export const ProjectDetailPage: React.FC = () => {
                       <td className="py-3.5 px-4 font-medium">{egis.aliasName}</td>
                       <td className="py-3.5 px-4">{egis.production}</td>
                       <td className="py-3.5 px-4 font-mono font-semibold">{egis.currency}</td>
-                      <td className="py-3.5 px-4 font-mono">SEQ 00{egis.currentSeqNumber}</td>
+                      <td className="py-3.5 px-4 font-mono">SEQ 00{egis.latestSeqNumber || egis.currentSeqNumber || 1}</td>
                       <td className="py-3.5 px-4">
                         <CurrencyDisplay amount={egis.latestPrice} currency={egis.currency} />
                       </td>
@@ -764,6 +823,148 @@ export const ProjectDetailPage: React.FC = () => {
           <p className="text-xs text-muted-foreground max-w-md mx-auto">
             This module is connected to the real-time project database. All parameters and history logs are synced across EGIS alternatives.
           </p>
+        </div>
+      )}
+
+      {/* New EGIS Alternative Modal */}
+      {showNewEgisModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Add EGIS Alternative</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Create alternative model, factory origin, or currency option for {project.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowNewEgisModal(false)}
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateAlternative} className="space-y-4 text-xs">
+              <div>
+                <label className="font-semibold block mb-1.5 text-foreground">
+                  Select Elevator Model
+                </label>
+                <select
+                  value={newModel}
+                  onChange={(e) => setNewModel(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-border bg-background focus:ring-1 focus:ring-primary text-xs"
+                >
+                  {AVAILABLE_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label}
+                    </option>
+                  ))}
+                  <option value="CUSTOM">Custom / Other Model...</option>
+                </select>
+              </div>
+
+              {newModel === 'CUSTOM' && (
+                <div>
+                  <label className="font-semibold block mb-1 text-foreground">
+                    Custom Model Name
+                  </label>
+                  <input
+                    type="text"
+                    value={customModel}
+                    onChange={(e) => setCustomModel(e.target.value)}
+                    placeholder="e.g. THE EL (High Speed Double Deck)"
+                    className="w-full p-2.5 rounded-xl border border-border bg-background"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold block mb-1.5 text-foreground">
+                    Production Origin
+                  </label>
+                  <select
+                    value={newProduction}
+                    onChange={(e) => setNewProduction(e.target.value as Production)}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background"
+                  >
+                    <option value={Production.CHINA}>CHINA Factory</option>
+                    <option value={Production.KOREA}>KOREA Factory</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold block mb-1.5 text-foreground">
+                    Commercial Currency
+                  </label>
+                  <select
+                    value={newCurrency}
+                    onChange={(e) => setNewCurrency(e.target.value as Currency)}
+                    className="w-full p-2.5 rounded-xl border border-border bg-background"
+                  >
+                    <option value={Currency.USD}>USD ($)</option>
+                    <option value={Currency.CNY}>CNY (¥)</option>
+                    <option value={Currency.IDR}>IDR (Rp)</option>
+                    <option value={Currency.EUR}>EUR (€)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1.5 text-foreground">
+                  Estimated Initial Price
+                </label>
+                <input
+                  type="number"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  placeholder="e.g. 145000"
+                  className="w-full p-2.5 rounded-xl border border-border bg-background"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1.5 text-foreground">
+                  Alternative Package / Alias Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={newAliasName}
+                  onChange={(e) => setNewAliasName(e.target.value)}
+                  placeholder="e.g. Option B - Premium High Speed MRL (Korea USD)"
+                  className="w-full p-2.5 rounded-xl border border-border bg-background"
+                />
+              </div>
+
+              <div className="p-3 rounded-xl bg-muted/40 border border-border text-[11px] text-muted-foreground leading-relaxed">
+                ℹ️ SEMS will generate a dedicated <strong>HDE-26...</strong> ID and initialize <strong>SEQ 001 (QUOTATION)</strong> for this model alternative.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setShowNewEgisModal(false)}
+                  className="px-4 py-2 rounded-xl border border-border hover:bg-muted font-semibold text-xs text-muted-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-sm transition-all"
+                >
+                  Create EGIS Alternative
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

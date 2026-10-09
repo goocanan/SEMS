@@ -77,6 +77,17 @@ interface ProjectState {
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
   addAlias: (projectId: string, aliasName: string) => void;
+  updateEgisModel: (egisId: string, modelName: string, aliasName?: string, createNewSeq?: boolean) => void;
+  addEgisAlternative: (
+    projectId: string,
+    payload: {
+      aliasName: string;
+      model: string;
+      production: Production;
+      currency: Currency;
+      price: number;
+    }
+  ) => Egis;
 
   // Revisions & Approvals
   createRevision: (rev: Partial<Revision> & { egisRefId: string; egisId: string }) => Revision;
@@ -250,6 +261,182 @@ export const useProjectStore = create<ProjectState>()(
             };
           }),
         }));
+      },
+
+      updateEgisModel: (egisId, modelName, aliasName, createNewSeq = true) => {
+        const now = new Date().toISOString();
+        set((state) => {
+          // Update egisList
+          const updatedEgisList = state.egisList.map((e) =>
+            e.egisId === egisId
+              ? {
+                  ...e,
+                  aliasName: aliasName || `${modelName} Package`,
+                  notes: `Model updated to ${modelName}`,
+                  updatedAt: now,
+                }
+              : e
+          );
+
+          // Update projects' egisSummaries
+          const updatedProjects = state.projects.map((p) => ({
+            ...p,
+            egisSummaries: (p.egisSummaries || []).map((eg) =>
+              eg.egisId === egisId
+                ? {
+                    ...eg,
+                    aliasName: aliasName || `${modelName} Package`,
+                    latestSeqNumber: createNewSeq ? eg.latestSeqNumber + 1 : eg.latestSeqNumber,
+                  }
+                : eg
+            ),
+          }));
+
+          // Optional new sequence for audit trail
+          let newRevisions = state.revisions;
+          if (createNewSeq) {
+            const currentEgis = state.egisList.find((e) => e.egisId === egisId);
+            const currentSeq = currentEgis?.currentSeqNumber || 1;
+            const nextSeq = currentSeq + 1;
+            const newRev: Revision = {
+              id: `rev-${Date.now()}`,
+              egisRefId: currentEgis?.id || `egis-${Date.now()}`,
+              egisId,
+              seqNumber: nextSeq,
+              seqCode: String(nextSeq).padStart(3, '0'),
+              process: 'FUP' as any,
+              revisionLabel: `FUP REV ${nextSeq} (Model Change: ${modelName})`,
+              status: RevisionStatus.PENDING_REVIEW,
+              price: currentEgis?.latestPrice || 135000,
+              currency: currentEgis?.currency || Currency.USD,
+              priceDate: now,
+              priceExpiryDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+              createdBy: 'usr-1',
+              createdByName: 'Current Estimator',
+              changeCount: 1,
+              sourceFileName: `${egisId}_00${nextSeq}_ModelChange.xlsx`,
+              notes: `Model changed to ${modelName}. Submitted for Lead Estimator verification.`,
+              createdAt: now,
+              updatedAt: now,
+            };
+            newRevisions = [newRev, ...state.revisions];
+          }
+
+          const newActivity: ActivityLogItem = {
+            id: `act-${Date.now()}`,
+            user: 'Estimator',
+            role: 'Estimator',
+            action: `Changed Model for ${egisId}`,
+            target: `New Model: ${modelName}`,
+            time: 'Just now',
+            badge: 'purple',
+          };
+
+          return {
+            egisList: updatedEgisList,
+            projects: updatedProjects,
+            revisions: newRevisions,
+            activities: [newActivity, ...state.activities],
+          };
+        });
+      },
+
+      addEgisAlternative: (projectId, payload) => {
+        const randomNum = Math.floor(1000 + Math.random() * 9000);
+        const egisId = `HDE-2600${randomNum}`;
+        const now = new Date().toISOString();
+        const futureDate = new Date();
+        futureDate.setDate(futureDate.getDate() + 180);
+        const expiryIso = futureDate.toISOString();
+
+        const targetProject = get().projects.find((p) => p.id === projectId);
+        const projectName = targetProject?.name || 'Project';
+
+        const newEgis: Egis = {
+          id: `egis-${Date.now()}`,
+          egisId,
+          projectId,
+          projectName,
+          projectCode: targetProject?.projectCode || `PRJ-2026-${randomNum}`,
+          aliasName: payload.aliasName || `${payload.model} (${payload.production} ${payload.currency})`,
+          currency: payload.currency,
+          production: payload.production,
+          port: 'Shanghai Port',
+          warrantyMonths: 12,
+          issueDate: now,
+          expiryDate: expiryIso,
+          currentSeqNumber: 1,
+          latestPrice: payload.price,
+          status: 'ACTIVE' as any,
+          egisValidity: calculateEgisValidity(expiryIso),
+          priceValidity: calculatePriceValidity(expiryIso),
+          notes: `Created alternative model ${payload.model}`,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const initialSummary = {
+          id: newEgis.id,
+          egisId,
+          aliasName: newEgis.aliasName,
+          currency: payload.currency,
+          production: payload.production,
+          latestSeqNumber: 1,
+          latestPrice: payload.price,
+          egisValidity: newEgis.egisValidity!,
+          priceValidity: newEgis.priceValidity!,
+          status: 'ACTIVE',
+        };
+
+        const newRevision: Revision = {
+          id: `rev-${Date.now()}`,
+          egisRefId: newEgis.id,
+          egisId,
+          seqNumber: 1,
+          seqCode: '001',
+          process: 'QUOTATION' as any,
+          revisionLabel: `QUOTATION REV 0 (${payload.model})`,
+          status: RevisionStatus.PENDING_REVIEW,
+          price: payload.price,
+          currency: payload.currency,
+          priceDate: now,
+          priceExpiryDate: expiryIso,
+          createdBy: 'usr-1',
+          createdByName: 'Current Estimator',
+          changeCount: 1,
+          sourceFileName: `${egisId}_001_Initial.xlsx`,
+          notes: `Initial sequence for alternative model ${payload.model}`,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        set((state) => ({
+          egisList: [newEgis, ...state.egisList],
+          revisions: [newRevision, ...state.revisions],
+          projects: state.projects.map((p) =>
+            p.id === projectId
+              ? {
+                  ...p,
+                  egisSummaries: [...(p.egisSummaries || []), initialSummary],
+                  updatedAt: now,
+                }
+              : p
+          ),
+          activities: [
+            {
+              id: `act-${Date.now()}`,
+              user: 'Estimator',
+              role: 'Estimator',
+              action: `Created new EGIS Alternative ${egisId}`,
+              target: `${projectName} — Model: ${payload.model}`,
+              time: 'Just now',
+              badge: 'green',
+            },
+            ...state.activities,
+          ],
+        }));
+
+        return newEgis;
       },
 
       createRevision: (rev) => {
